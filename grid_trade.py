@@ -5,7 +5,7 @@ import csv
 import matplotlib.pyplot as plt
 import config as c
 
-     
+
 def record_max_drawdown():
     #global accumulated_net_profit
     #global max_drawdown
@@ -98,7 +98,7 @@ def update_profit_data(data):
     #print(f"Profit data of record no {c.record_no} of value of {c.accumulated_net_profit} updated!")
     
     
-def grid_trade(data, symbol):
+def grid_trade(data, symbol, stop_loss_amount, stop_loss_level, step):
 
  # Define local variables
     current_price = float(data['Close'].values[0])
@@ -111,6 +111,24 @@ def grid_trade(data, symbol):
     c.stop_loss_count=0
     c.profit_data = []
     
+# reset all parameters for each simulation
+    c.total_commission = 0 
+    c.max_drawdown = 0
+    c.max_risk = 0
+    c.accumulated_profit = 0
+    c.accumulated_net_profit = 0
+    c.accumulated_contract = 0
+    c.position = 0
+    c.stop_loss_count = 0
+    c.win_loss_record = []
+    c.record_no = 0  
+    c.profit_data = []
+    
+  # Get paramenter from argument
+    c.stop_loss_amount = stop_loss_amount
+    c.stop_loss_level = stop_loss_level
+    c.step = step  
+
 
 # Simulate trading logic with historical data for backtesting
     for current_price in data['Close'].values:
