@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import config as c
 
 
+
+
+
 def record_max_drawdown():
     #global accumulated_net_profit
     #global max_drawdown
