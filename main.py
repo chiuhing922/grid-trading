@@ -14,6 +14,10 @@ start_time = time.time()
 data = dc.load_data_from_csv('d:/dev/quant/data-source/kaggle/eurusd_minute.csv')
 #grid_trade(data=data, symbol='EURUSD=X', contract_size=100000, stop_loss_amount=3000, stop_loss_level=4, step=0.002)
 
+result = grid_trade.grid_trade(data=data, symbol=symbol, stop_loss_amount=10000, stop_loss_level=4, step=0.0005 )
+
+
+'''
 for stop_loss_amount in range(1000, 11000, 1000):  # Example: 1000 to 10000 in steps of 1000
     for stop_loss_level in range(3, 11, 1):            # Example: 3 to 10 in steps of 1
         for step in np.arange(0.0005, 0.0105, 0.0005):  # Example: 0.001 to 0.01 in steps of 0.001
@@ -37,6 +41,8 @@ for stop_loss_amount in range(1000, 11000, 1000):  # Example: 1000 to 10000 in s
                 'stop loss triggered': stop_loss_triggered
             })
 
+
+'''
 # Convert results to DataFrame for easy viewing (optional)
 import pandas as pd
 results_df = pd.DataFrame(results)
@@ -52,7 +58,7 @@ results_df.to_csv(filename, index=False)
 print(f"Results saved to '{filename}'.")
 
 
-#re.gen_report()
+re.gen_report()
 end_time = time.time()
 execution_time = end_time - start_time
 print(f"Backtest execution time: {execution_time:.4f} seconds")
