@@ -6,8 +6,128 @@ import matplotlib.pyplot as plt
 import config as c
 
 
+from enum import Enum
+from typing import List, Tuple, Optional
+import pandas as pd
+
+class PositionType(Enum):
+    LONG = 'long'
+    SHORT = 'short'
+
+def close_positions(
+    data: pd.DataFrame,
+    position_stack: List[float],
+    current_price: float,
+    position_type: PositionType,
+    is_final_close: bool = False
+) -> None:
+    """
+    Unified function to close trading positions.
+    
+    Args:
+        data: DataFrame containing trading data
+        position_stack: List of entry prices for positions to be closed
+        current_price: Current market price
+        position_type: Enum indicating if positions are LONG or SHORT
+        is_final_close: Boolean indicating if this is final closing at end of backtest
+    """
+    if not position_stack:
+        return
+        
+    commission = max(c.commission_rate * c.contract_size * current_price, 2)
+    
+    while position_stack:
+        entry_price = position_stack.pop()
+        
+        # Calculate profit based on position type
+        if position_type == PositionType.LONG:
+            profit = c.contract_size * (current_price - entry_price)
+            c.position -= 1
+        else:  # SHORT
+            profit = c.contract_size * (entry_price - current_price)
+            c.position += 1
+            
+        # Update trading statistics
+        c.accumulated_profit += profit
+        c.accumulated_net_profit += profit - commission
+        c.max_drawdown = record_max_drawdown()
+        c.total_commission += commission
+        c.accumulated_contract += 1
+        
+        # Record profit data
+        update_profit_data(data)
+        
+        if not is_final_close:
+            log_trade(data, position_type, entry_price, current_price, profit)
+
+def close_all_positions(
+    data: pd.DataFrame,
+    long_stack: List[float],
+    short_stack: List[float],
+    current_price: float
+) -> None:
+    """
+    Close all outstanding positions during end of backtest or emergency situations.
+    
+    Args:
+        data: DataFrame containing trading data
+        long_stack: List of entry prices for long positions
+        short_stack: List of entry prices for short positions
+        current_price: Current market price
+    """
+    # Close short positions first if they exist
+    if c.position < 0:
+        close_positions(data, short_stack, current_price, PositionType.SHORT, True)
+    
+    # Close long positions if they exist
+    elif c.position > 0:
+        close_positions(data, long_stack, current_price, PositionType.LONG, True)
+
+def log_trade(
+    data: pd.DataFrame,
+    position_type: PositionType,
+    entry_price: float,
+    exit_price: float,
+    profit: float
+) -> None:
+    """
+    Log trading activity for analysis and debugging.
+    
+    Args:
+        data: DataFrame containing trading data
+        position_type: Type of position being closed
+        entry_price: Entry price of the position
+        exit_price: Exit price of the position
+        profit: Profit/loss from the trade
+    """
+    position_str = f"{position_type.value.capitalize()} Position: {c.position}"
+    if position_type == PositionType.LONG:
+        position_str = f"{position_str}+1"
+    else:
+        position_str = f"{position_str}-1"
+        
+    if c.enable_logging:
+        print(f"Record No: {c.record_no} Close {position_type.value.capitalize()} "
+              f"Position: {position_str} of entry price {entry_price:.2f} "
+              f"at price {exit_price:.2f}")
+        print(f"Trade Profit: {profit:.2f}, Accumulated Net Profit: {c.accumulated_net_profit:.2f}")
+
+# Example usage in grid_trade function:
+"""
+# Replace existing close position calls with:
+
+# For closing long positions:
+close_positions(data, long_stack, current_price, PositionType.LONG)
+
+# For closing short positions:
+close_positions(data, short_stack, current_price, PositionType.SHORT)
+
+# For closing all positions at end of backtest:
+close_all_positions(data, long_stack, short_stack, current_price)
 
 
+
+"""
 
 def record_max_drawdown():
     #global accumulated_net_profit
@@ -141,7 +261,8 @@ def grid_trade(data, symbol, stop_loss_amount, stop_loss_level, step):
         
     # Close long positions: Don't buy any more if stop loss condition is triggered
         if (c.position >= c.stop_loss_level and current_price <= next_long_price):
-            close_all_long_position(data, long_stack, current_price)
+            #close_all_long_position(data, long_stack, current_price)
+            close_all_positions(data, long_stack, short_stack, current_price)
             #print(f"Record No: {c.record_no} Closed all long positions at price {current_price}. Accumulated Net Profit: {c.accumulated_net_profit}")
             c.position = 0
             c.stop_loss_count +=1
@@ -150,7 +271,8 @@ def grid_trade(data, symbol, stop_loss_amount, stop_loss_level, step):
         
     # Close short positions: Don't Short any more if stop loss condition is triggered
         elif (c.position <= (-1 * c.stop_loss_level) and current_price >= next_short_price):
-            close_all_short_position(data, short_stack, current_price)
+            #close_all_short_position(data, short_stack, current_price)
+            close_all_positions(data, long_stack, short_stack, current_price)
             #print(f"Record No: {c.record_no} Closed all short positions at price {current_price}. Accumulated Net Profit: {c.accumulated_net_profit}")
             c.position = 0
             c.stop_loss_count +=1
@@ -188,6 +310,8 @@ def grid_trade(data, symbol, stop_loss_amount, stop_loss_level, step):
                 short_stack.append(current_price)
                 #print(f"Record No: {c.record_no} Submitted short contract. Position: {c.position} at price {current_price}")
             else:
+                close_positions(data, long_stack, current_price, PositionType.LONG)
+                
                 c.position -= 1
                 entry_price = long_stack.pop()
                 #print(f"Record No: {c.record_no} Close Long Position: {c.position+1} of entry price {entry_price} at price {current_price}")
