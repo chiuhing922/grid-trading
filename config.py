@@ -21,4 +21,4 @@ win_loss_record = []
 win_loss_score_n = 8   # the last n win-loss record to calculate the win_loss_score  
 record_no = 0  
 profit_data = []
-enable_logging = False
+enable_logging = True

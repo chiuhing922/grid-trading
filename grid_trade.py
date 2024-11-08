@@ -34,6 +34,7 @@ def close_positions(
         position_stack: List of entry prices for positions to be closed
         current_price: Current market price
         position_type: Enum indicating if positions are LONG or SHORT
+        contract_quantity: Enum indicating if it's closing single or all contracts
         is_final_close: Boolean indicating if this is final closing at end of backtest
     """
     if not position_stack:
@@ -61,8 +62,9 @@ def close_positions(
         # Record profit data
         update_profit_data(data)
         
-        if not is_final_close:
-            log_trade(data, position_type, entry_price, current_price, profit) 
+        #if not is_final_close:
+        #    log_trade(data, position_type, entry_price, current_price, profit) 
+        log_trade(data, position_type, entry_price, current_price, profit)     
             
     elif contract_quantity == ContractQuantity.ALL:
     # Closing ALL contracts    
@@ -86,10 +88,10 @@ def close_positions(
         
             # Record profit data
             update_profit_data(data)
-        
-            if not is_final_close:
-                log_trade(data, position_type, entry_price, current_price, profit)
-
+            #if not is_final_close:
+            #    log_trade(data, position_type, entry_price, current_price, profit)
+            log_trade(data, position_type, entry_price, current_price, profit)
+            
 def close_all_positions(
     data: pd.DataFrame,
     long_stack: List[float],
@@ -130,17 +132,15 @@ def log_trade(
         exit_price: Exit price of the position
         profit: Profit/loss from the trade
     """
-    position_str = f"{position_type.value.capitalize()} Position: {c.position}"
-    if position_type == PositionType.LONG:
-        position_str = f"{position_str}+1"
+    if position_type == PositionType.SHORT:
+        position_str = f"{position_type.value.capitalize()} contract position: {c.position-1}"
     else:
-        position_str = f"{position_str}-1"
-        
+        position_str = f"{position_type.value.capitalize()} contract position: {c.position+1}"    
     if c.enable_logging:
-        print(f"Record No: {c.record_no} Close {position_type.value.capitalize()} "
-              f"Position: {position_str} of entry price {entry_price:.2f} "
-              f"at price {exit_price:.2f}")
-        print(f"Trade Profit: {profit:.2f}, Accumulated Net Profit: {c.accumulated_net_profit:.2f}")
+        print(f"Record No: {c.record_no} Close "
+              f"{position_str} of entry price {entry_price:.5f} "
+              f"at price {exit_price:.5f}")
+        print(f"\t\tTrade Profit: {profit:.2f}, Accumulated Net Profit: {c.accumulated_net_profit:.2f}")
 
 # Example usage in grid_trade function:
 """
@@ -213,36 +213,21 @@ def grid_trade(data, symbol, stop_loss_amount, stop_loss_level, step):
     c.stop_loss_level = stop_loss_level
     c.step = step  
 
-
 # Simulate trading logic with historical data for backtesting
     for current_price in data['Close'].values:
         commission = max(c.commission_rate * c.contract_size * current_price, 2)
         c.record_no += 1
         current_price = float(current_price)
         
-    # Close long positions: Don't buy any more if stop loss condition is triggered
+    # Close long positions: Don't buy any more if total contract reached limit
         if (c.position >= c.stop_loss_level and current_price <= next_long_price):
-            #close_all_long_position(data, long_stack, current_price)
             close_positions(data, long_stack, current_price, PositionType.LONG, ContractQuantity.ALL)
-            """
-            #close_all_positions(data, long_stack, short_stack, current_price)
-            #print(f"Record No: {c.record_no} Closed all long positions at price {current_price}. Accumulated Net Profit: {c.accumulated_net_profit}")
-            c.position = 0
-            c.stop_loss_count +=1
-            """
             if c.accumulated_net_profit < (-1 * c.stop_loss_amount):   
                 break        #Stop loss
         
-    # Close short positions: Don't Short any more if stop loss condition is triggered
+    # Close short positions: Don't Short any more if total contract reached limit
         elif (c.position <= (-1 * c.stop_loss_level) and current_price >= next_short_price):
-            #close_all_short_position(data, short_stack, current_price)
-            #close_all_positions(data, long_stack, short_stack, current_price)
             close_positions(data, short_stack, current_price, PositionType.SHORT, ContractQuantity.ALL)
-            """
-            #print(f"Record No: {c.record_no} Closed all short positions at price {current_price}. Accumulated Net Profit: {c.accumulated_net_profit}")
-            c.position = 0
-            c.stop_loss_count +=1
-            """
             if c.accumulated_net_profit < (-1 * c.stop_loss_amount):
                 break        #Stop loss
 
@@ -251,25 +236,9 @@ def grid_trade(data, symbol, stop_loss_amount, stop_loss_level, step):
             if c.position >= 0:
                 c.position += 1
                 long_stack.append(current_price)
-                #print(f"Record No: {c.record_no} Submitted long contract. Position: {c.position} at price {current_price}")
+                print(f"Record No: {c.record_no} Open new LONG contract position {c.position} of entry price: {current_price}")
             else:   # closing existing short contract
                 close_positions(data, short_stack, current_price, PositionType.SHORT, ContractQuantity.SINGLE)
-                '''
-                c.position += 1
-                entry_price = short_stack.pop()
-                #print(f"Record No: {c.record_no} Close Short Position: {c.position-1} of entry price {entry_price} at price {current_price}")
-                profit = (entry_price - current_price) * c.contract_size
-                commission = max(c.commission_rate * c.contract_size * current_price, 2)
-                c.accumulated_profit += profit
-                c.accumulated_net_profit += profit - commission
-                c.max_drawdown = record_max_drawdown()
-                c.total_commission += commission
-                c.accumulated_contract += 1
-                #print(f"Accumulated Net Profit: {c.accumulated_net_profit}")
-                #profit_data.append((data['Datetime'].iloc[record_no-1], accumulated_net_profit))
-                #profit_data.append((data.index[record_no-1], accumulated_net_profit))
-                update_profit_data(data)
-                '''
             next_long_price -= c.step
             next_short_price -= c.step
 
@@ -278,27 +247,13 @@ def grid_trade(data, symbol, stop_loss_amount, stop_loss_level, step):
             if c.position <= 0:
                 c.position -= 1
                 short_stack.append(current_price)
-                #print(f"Record No: {c.record_no} Submitted short contract. Position: {c.position} at price {current_price}")
+                print(f"Record No: {c.record_no} Open new SHORT contract position {c.position} of entry price: {current_price}")
             else:
                 close_positions(data, long_stack, current_price, PositionType.LONG, ContractQuantity.SINGLE)
-                ''' 
-                c.position -= 1
-                entry_price = long_stack.pop()
-                #print(f"Record No: {c.record_no} Close Long Position: {c.position+1} of entry price {entry_price} at price {current_price}")
-                profit = (current_price - entry_price) * c.contract_size
-                c.accumulated_profit += profit
-                c.accumulated_net_profit += profit - commission
-                c.total_commission += commission
-                c.accumulated_contract += 1
-                
-                #print(f"Accumulated Net Profit: {c.accumulated_net_profit}")
-                #profit_data.append((data['Datetime'].iloc[record_no-1], accumulated_net_profit))
-                #profit_data.append((data.index[record_no-1], accumulated_net_profit))
-                update_profit_data(data)
-                '''
             next_short_price += c.step
             next_long_price += c.step
-            
+    # End of all testing data or Stop Loss triggered        
+    close_all_positions(data, long_stack, short_stack, current_price)     
     return (c.accumulated_profit, c.accumulated_net_profit, c.max_drawdown, c.accumulated_contract,c.stop_loss_count)
 
 
