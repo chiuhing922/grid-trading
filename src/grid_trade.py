@@ -3,6 +3,7 @@ from enum import Enum
 from typing import List, Tuple, Optional
 import pandas as pd
 from datetime import datetime
+import config as c
 
 class PositionType(Enum):
     LONG = 'long'
@@ -21,7 +22,7 @@ class TradingState:
     stop_loss_amount: float
     stop_loss_level: int
     step: float
-    enable_logging: bool = True
+    enable_logging: bool = c.enable_logging
     
     # Trading state
     total_commission: float = 0

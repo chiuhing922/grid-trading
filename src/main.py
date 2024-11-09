@@ -4,55 +4,53 @@ import reporting as re
 import pandas as pd
 import numpy as np
 import config as c
-from grid_trade import GridTrader  # Import the new GridTrader class
+from grid_trade import GridTrader
 
-def run_backtest(data: pd.DataFrame, commission_rate: float = 0.00002, contract_size: float = 100000):
-    # Initialize an empty list to store results
-    results = []
-    symbol = 'EURUSD=X'
-    
-    # Initialize the GridTrader
-    trader = GridTrader(commission_rate=commission_rate, contract_size=contract_size)
-    
-    # Single run example
+def run_single_backtest(data: pd.DataFrame, trader: GridTrader) -> list:
+    """Run a single backtest with parameters from config"""
     result = trader.grid_trade(
         data=data,
-        symbol=symbol,
-        stop_loss_amount=10000,
-        stop_loss_level=4,
-        step=0.0005
+        symbol=c.fx_symbol,
+        **c.single_run_params  # Unpack parameters from config
     )
-
     
     # Unpack results
     gross_profit, net_profit, max_drawdown, total_trade, stop_loss_triggered = result
     
-    results.append({
-        'stop_loss_amount': 10000,
-        'stop_loss_level': 4,
-        'step': 0.0005,
+    # Create results dictionary
+    results = [{
+        'stop_loss_amount': c.single_run_params['stop_loss_amount'],
+        'stop_loss_level': c.single_run_params['stop_loss_level'],
+        'step': c.single_run_params['step'],
         'gross profit': gross_profit,
         'net profit': net_profit,
         'max_drawdown': max_drawdown,
         'total trade': total_trade,
         'stop loss triggered': stop_loss_triggered
-    })
+    }]
     
     return results
 
-def run_parameter_optimization(data: pd.DataFrame, commission_rate: float = 0.00002, contract_size: float = 100000):
+def run_optimization(data: pd.DataFrame, trader: GridTrader) -> list:
+    """Run parameter optimization with ranges from config"""
     results = []
-    symbol = 'EURUSD=X'
     
-    # Initialize the GridTrader
-    trader = GridTrader(commission_rate=commission_rate, contract_size=contract_size)
+    # Calculate total combinations for progress tracking
+    total_combinations = (len(c.optimization_params['stop_loss_amounts']) * 
+                        len(c.optimization_params['stop_loss_levels']) * 
+                        len(c.optimization_params['steps']))
+    current_combination = 0
     
-    for stop_loss_amount in range(1000, 11000, 1000):
-        for stop_loss_level in range(3, 6, 1):
-            for step in np.arange(0.0003, 0.0011, 0.0001):
+    for stop_loss_amount in c.optimization_params['stop_loss_amounts']:
+        for stop_loss_level in c.optimization_params['stop_loss_levels']:
+            for step in c.optimization_params['steps']:
+                current_combination += 1
+                print(f"\rProgress: {current_combination}/{total_combinations} "
+                      f"({(current_combination/total_combinations*100):.1f}%)", end="")
+                
                 result = trader.grid_trade(
                     data=data,
-                    symbol=symbol,
+                    symbol=c.fx_symbol,
                     stop_loss_amount=stop_loss_amount,
                     stop_loss_level=stop_loss_level,
                     step=step
@@ -71,84 +69,62 @@ def run_parameter_optimization(data: pd.DataFrame, commission_rate: float = 0.00
                     'stop loss triggered': stop_loss_triggered
                 })
     
+    print("\nOptimization complete!")
     return results
+
+def save_results(results: list, is_optimization: bool = False) -> None:
+    """Save results to CSV file"""
+    results_df = pd.DataFrame(results)
+    
+    # Generate filename with timestamp
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    filename_prefix = 'optimization' if is_optimization else 'backtest'
+    filename = f'{c.output_dir}/{filename_prefix}_results_{timestamp}.csv'
+    
+    # Save results
+    results_df.to_csv(filename, index=False)
+    print(f"\nResults saved to {filename}")
+    
+    # If optimization, display top results
+    if is_optimization:
+        print("\nTop 10 Parameter Combinations:")
+        print(results_df.sort_values(by='net profit', ascending=False).head(10))
 
 def main():
     start_time = time.time()
     
-    # Load data (old way)
-    #data = dc.load_data_from_csv('~/dev/data-source/kaggle/eurusd_minute.csv')  # from CSV
-    #data = dc.fetch_YF_data('EURUSD=X', '5d', '1m')                             # from Yahoo Finance
-
-    # New way
-    connector = dc.DataConnector()
-
-    # Load from CSV
-    data = connector.get_data(
-        source=dc.DataSource.CSV,
-        file_path='/users/chris/dev/data-source/kaggle/eurusd_minute.csv'
+    # Initialize trader
+    trader = GridTrader(
+        commission_rate=c.commission_rate,
+        contract_size=c.contract_size
     )
-    '''
-    # Or load from Yahoo Finance
-    data = connector.get_data(
-        source=dc.DataSource.YAHOO_FINANCE,
-        symbol='EURUSD=X',
-        period='5d',
-        interval='1m'
-    )
-    '''    
-    # Choose which mode to run:
-    run_optimization = True  # Set to True for optimization, False for single run
     
-    if run_optimization:
-        # Run parameter optimization
-        results = run_parameter_optimization(
-            data=data,
-            commission_rate=c.commission_rate,
-            contract_size=c.contract_size
+    # Load data from CSV or Yahoo Finance
+    try:
+        data = dc.load_data_from_csv(c.data_params['csv_path'])
+    except Exception as e:
+        print(f"Failed to load CSV data: {e}")
+        print("Attempting to fetch data from Yahoo Finance...")
+        data = dc.fetch_YF_data(
+            c.fx_symbol,
+            period=c.data_params['yf_period'],
+            interval=c.data_params['yf_interval']
         )
+    
+    # Run selected mode based on config
+    if c.run_mode == 'optimization':
+        results = run_optimization(data, trader)
+        save_results(results, is_optimization=True)
     else:
-        # Run single backtest
-        results = [{
-            'stop_loss_amount': 10000,
-            'stop_loss_level': 4,
-            'step': 0.0005,
-            'gross profit': gross_profit,
-            'net profit': net_profit,
-            'max_drawdown': max_drawdown,
-            'total trade': total_trade,
-            'stop loss triggered': stop_loss_triggered
-        }]
-    
-    # Convert results to DataFrame
-    results_df = pd.DataFrame(results)
-    
-    # Sort results by net profit to see best performing parameters
-    results_df_sorted = results_df.sort_values(by='net profit', ascending=False)
-    
-    # Display top 10 results
-    print("\nTop 10 Parameter Combinations:")
-    print(results_df_sorted.head(10))
-    
-    # Save full results with timestamp
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    filename = f'~/dev/output/optimization_results_{timestamp}.csv'
-    results_df.to_csv(filename, index=False)
-    print(f"\nFull results saved to {filename}")
-    
-    # Generate report for best parameter combination
-    if run_optimization:
-        best_params = results_df_sorted.iloc[0]
-        print("\nBest Parameters:")
-        print(f"Stop Loss Amount: ${best_params['stop_loss_amount']:,}")
-        print(f"Stop Loss Level: {best_params['stop_loss_level']}")
-        print(f"Step Size: {best_params['step']}")
-        print(f"Net Profit: ${best_params['net profit']:,.2f}")
+        results = run_single_backtest(data, trader)
+        save_results(results, is_optimization=False)
+        # Generate report for single run
+        re.gen_report(trader.state, symbol=c.fx_symbol)
     
     # Print execution time
     end_time = time.time()
     execution_time = end_time - start_time
-    print(f"\nBacktest execution time: {execution_time:.4f} seconds")
+    print(f"\nExecution time: {execution_time:.4f} seconds")
 
 if __name__ == "__main__":
     main()

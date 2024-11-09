@@ -1,7 +1,12 @@
+import numpy as np
+
 # Trading parameters
 commission_rate = 0.00002
 contract_size = 100000
 fx_symbol = 'EURUSD=X'
+
+# Run mode
+run_mode = 'optimization'  # or 'single'
 
 # Single run parameters
 single_run_params = {
@@ -12,15 +17,16 @@ single_run_params = {
 
 # Optimization parameters
 optimization_params = {
-    'stop_loss_amounts': range(5000, 20001, 5000),  # 5000 to 20000 in steps of 5000
-    'stop_loss_levels': range(3, 8),                # 3 to 7
-    'steps': [0.0003, 0.0005, 0.0007, 0.0010]      # specific step sizes to test
+    'stop_loss_amounts': range(5000, 11000, 1000),  # 5000 to 10000 in steps of 1000
+    'stop_loss_levels': range(2, 8),                # 3 to 7
+    #'steps': [0.0003, 0.0004, 0.0004, 0.0006, 0.0007, 0.008]      # specific step sizes to test
+    'steps': np.arange(0.0002, 0.00016, 0.0001)      # 0.0002 to 0.0015 in step of 0.0001
 }
 
 # Data parameters
 data_params = {
-    'csv_path': '~/dev/data-source/kaggle/eurusd_minute.csv',
-    'yf_period': '5d',
+    'csv_path': '/Users/chris/dev/data-source/kaggle/eurusd_minute.csv',
+    'yf_period': '1d',
     'yf_interval': '1m'
 }
 
@@ -28,4 +34,4 @@ data_params = {
 output_dir = '~/dev/output'
 
 # Logging parameters
-enable_logging = True
+enable_logging = False
