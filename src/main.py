@@ -1,88 +1,154 @@
 import time
-import grid_trade
 import data_connector as dc
 import reporting as re
-import config as c
-import numpy as np
-symbol = 'EURUSD=X'
-# Initialize an empty list to store results
-results = []
-
-start_time = time.time()
-#data = dc.fetch_YF_data(symbol, '5d', '1m')
-#data.reset_index(inplace=True)   # only needed if using YF data source
-data = dc.load_data_from_csv('~/dev/data-source/kaggle/eurusd_minute.csv')
-#grid_trade(data=data, symbol='EURUSD=X', contract_size=100000, stop_loss_amount=3000, stop_loss_level=4, step=0.002)
-
-
-# Run one time 
-#result = grid_trade.grid_trade(data=data, symbol=symbol, stop_loss_amount=10000, stop_loss_level=4, step=0.0005 )
-result = grid_trade.grid_trade(data=data, symbol=symbol, stop_loss_amount=1000, stop_loss_level=3, step=0.0010)
-# Assuming `grid_trade.grid_trade()` returns the 4 data points, you can unpack them
-# Example: (profit, max_drawdown, total_commission, final_position)
-gross_profit, net_profit, max_drawdown, total_trade, stop_loss_triggered = result
-
-results.append({
-    'stop_loss_amount': 1000,
-    'stop_loss_level': 3,
-    'step': 0.001,
-    'gross profit': gross_profit,
-    'net profit': net_profit,
-    'max_drawdown': max_drawdown,
-    'total trade': total_trade,
-    'stop loss triggered': stop_loss_triggered
-})
-
-# Run mulitple time
-'''
-
-for stop_loss_amount in range(1000, 11000, 1000):  # Example: 1000 to 10000 in steps of 1000
-    for stop_loss_level in range(3, 11, 1):            # Example: 3 to 10 in steps of 1
-        for step in np.arange(0.0005, 0.0105, 0.0005):  # Example: 0.001 to 0.01 in steps of 0.001
-            # Run the function and capture 4 data points
-            
-            result = grid_trade.grid_trade(data=data, symbol=symbol, stop_loss_amount=stop_loss_amount, stop_loss_level=stop_loss_level, step=step )
-            
-            # Assuming `grid_trade.grid_trade()` returns the 4 data points, you can unpack them
-            # Example: (profit, max_drawdown, total_commission, final_position)
-            gross_profit, net_profit, max_drawdown, total_trade, stop_loss_triggered = result
-            
-            # Append the data points along with the parameters to results
-            results.append({
-                'stop_loss_amount': stop_loss_amount,
-                'stop_loss_level': stop_loss_level,
-                'step': step,
-                'gross profit': gross_profit,
-                'net profit': net_profit,
-                'max_drawdown': max_drawdown,
-                'total trade': total_trade,
-                'stop loss triggered': stop_loss_triggered
-            })
-
-'''
-
-# Convert results to DataFrame for easy viewing (optional)
 import pandas as pd
-results_df = pd.DataFrame(results)
-print(results_df) 
+import numpy as np
+import config as c
+from grid_trade import GridTrader  # Import the new GridTrader class
 
+def run_backtest(data: pd.DataFrame, commission_rate: float = 0.00002, contract_size: float = 100000):
+    # Initialize an empty list to store results
+    results = []
+    symbol = 'EURUSD=X'
+    
+    # Initialize the GridTrader
+    trader = GridTrader(commission_rate=commission_rate, contract_size=contract_size)
+    
+    # Single run example
+    result = trader.grid_trade(
+        data=data,
+        symbol=symbol,
+        stop_loss_amount=10000,
+        stop_loss_level=4,
+        step=0.0005
+    )
 
-# Generate a unique filename with a timestamp
-timestamp = time.strftime("%Y%m%d_%H%M%S")
-filename = f'~/dev/output/backtest_results_{timestamp}.csv'
+    
+    # Unpack results
+    gross_profit, net_profit, max_drawdown, total_trade, stop_loss_triggered = result
+    
+    results.append({
+        'stop_loss_amount': 10000,
+        'stop_loss_level': 4,
+        'step': 0.0005,
+        'gross profit': gross_profit,
+        'net profit': net_profit,
+        'max_drawdown': max_drawdown,
+        'total trade': total_trade,
+        'stop loss triggered': stop_loss_triggered
+    })
+    
+    return results
 
-# Save results to CSV file
-# Save results to CSV file with the unique timestamped filename
-results_df.to_csv(filename, index=False)
-print(f"Results saved to '{filename}'.")
+def run_parameter_optimization(data: pd.DataFrame, commission_rate: float = 0.00002, contract_size: float = 100000):
+    results = []
+    symbol = 'EURUSD=X'
+    
+    # Initialize the GridTrader
+    trader = GridTrader(commission_rate=commission_rate, contract_size=contract_size)
+    
+    for stop_loss_amount in range(1000, 11000, 1000):
+        for stop_loss_level in range(3, 6, 1):
+            for step in np.arange(0.0003, 0.0011, 0.0001):
+                result = trader.grid_trade(
+                    data=data,
+                    symbol=symbol,
+                    stop_loss_amount=stop_loss_amount,
+                    stop_loss_level=stop_loss_level,
+                    step=step
+                )
+                
+                gross_profit, net_profit, max_drawdown, total_trade, stop_loss_triggered = result
+                
+                results.append({
+                    'stop_loss_amount': stop_loss_amount,
+                    'stop_loss_level': stop_loss_level,
+                    'step': step,
+                    'gross profit': gross_profit,
+                    'net profit': net_profit,
+                    'max_drawdown': max_drawdown,
+                    'total trade': total_trade,
+                    'stop loss triggered': stop_loss_triggered
+                })
+    
+    return results
 
+def main():
+    start_time = time.time()
+    
+    # Load data (old way)
+    #data = dc.load_data_from_csv('~/dev/data-source/kaggle/eurusd_minute.csv')  # from CSV
+    #data = dc.fetch_YF_data('EURUSD=X', '5d', '1m')                             # from Yahoo Finance
 
-re.gen_report()
+    # New way
+    connector = dc.DataConnector()
 
+    # Load from CSV
+    data = connector.get_data(
+        source=dc.DataSource.CSV,
+        file_path='/users/chris/dev/data-source/kaggle/eurusd_minute.csv'
+    )
+    '''
+    # Or load from Yahoo Finance
+    data = connector.get_data(
+        source=dc.DataSource.YAHOO_FINANCE,
+        symbol='EURUSD=X',
+        period='5d',
+        interval='1m'
+    )
+    '''    
+    # Choose which mode to run:
+    run_optimization = True  # Set to True for optimization, False for single run
+    
+    if run_optimization:
+        # Run parameter optimization
+        results = run_parameter_optimization(
+            data=data,
+            commission_rate=c.commission_rate,
+            contract_size=c.contract_size
+        )
+    else:
+        # Run single backtest
+        results = [{
+            'stop_loss_amount': 10000,
+            'stop_loss_level': 4,
+            'step': 0.0005,
+            'gross profit': gross_profit,
+            'net profit': net_profit,
+            'max_drawdown': max_drawdown,
+            'total trade': total_trade,
+            'stop loss triggered': stop_loss_triggered
+        }]
+    
+    # Convert results to DataFrame
+    results_df = pd.DataFrame(results)
+    
+    # Sort results by net profit to see best performing parameters
+    results_df_sorted = results_df.sort_values(by='net profit', ascending=False)
+    
+    # Display top 10 results
+    print("\nTop 10 Parameter Combinations:")
+    print(results_df_sorted.head(10))
+    
+    # Save full results with timestamp
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    filename = f'~/dev/output/optimization_results_{timestamp}.csv'
+    results_df.to_csv(filename, index=False)
+    print(f"\nFull results saved to {filename}")
+    
+    # Generate report for best parameter combination
+    if run_optimization:
+        best_params = results_df_sorted.iloc[0]
+        print("\nBest Parameters:")
+        print(f"Stop Loss Amount: ${best_params['stop_loss_amount']:,}")
+        print(f"Stop Loss Level: {best_params['stop_loss_level']}")
+        print(f"Step Size: {best_params['step']}")
+        print(f"Net Profit: ${best_params['net profit']:,.2f}")
+    
+    # Print execution time
+    end_time = time.time()
+    execution_time = end_time - start_time
+    print(f"\nBacktest execution time: {execution_time:.4f} seconds")
 
-end_time = time.time()
-execution_time = end_time - start_time
-print(f"Backtest execution time: {execution_time:.4f} seconds")
- 
- 
- 
+if __name__ == "__main__":
+    main()
