@@ -79,49 +79,58 @@ def main():
     # Load data
     data = dc.load_data_from_csv('~/dev/data-source/kaggle/eurusd_minute.csv')
     
-    # Initialize trader
-    trader = GridTrader(commission_rate=c.commission_rate, contract_size=c.contract_size)
+    # Choose which mode to run:
+    run_optimization = True  # Set to True for optimization, False for single run
     
-    # Run backtest
-    result = trader.grid_trade(
-        data=data,
-        symbol='EURUSD=X',
-        stop_loss_amount=10000,
-        stop_loss_level=4,
-        step=0.0005
-    )
-    
-    # Unpack results
-    gross_profit, net_profit, max_drawdown, total_trade, stop_loss_triggered = result
-    
-    results = [{
-        'stop_loss_amount': 10000,
-        'stop_loss_level': 4,
-        'step': 0.0005,
-        'gross profit': gross_profit,
-        'net profit': net_profit,
-        'max_drawdown': max_drawdown,
-        'total trade': total_trade,
-        'stop loss triggered': stop_loss_triggered
-    }]
+    if run_optimization:
+        # Run parameter optimization
+        results = run_parameter_optimization(
+            data=data,
+            commission_rate=c.commission_rate,
+            contract_size=c.contract_size
+        )
+    else:
+        # Run single backtest
+        results = [{
+            'stop_loss_amount': 10000,
+            'stop_loss_level': 4,
+            'step': 0.0005,
+            'gross profit': gross_profit,
+            'net profit': net_profit,
+            'max_drawdown': max_drawdown,
+            'total trade': total_trade,
+            'stop loss triggered': stop_loss_triggered
+        }]
     
     # Convert results to DataFrame
     results_df = pd.DataFrame(results)
-    print(results_df)
     
-    # Save results with timestamp
+    # Sort results by net profit to see best performing parameters
+    results_df_sorted = results_df.sort_values(by='net profit', ascending=False)
+    
+    # Display top 10 results
+    print("\nTop 10 Parameter Combinations:")
+    print(results_df_sorted.head(10))
+    
+    # Save full results with timestamp
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    filename = f'~/dev/output/backtest_results_{timestamp}.csv'
+    filename = f'~/dev/output/optimization_results_{timestamp}.csv'
     results_df.to_csv(filename, index=False)
-    print(f"Results saved to '{filename}'.")
+    print(f"\nFull results saved to {filename}")
     
-    # Generate report with trader's state
-    re.gen_report(trader.state, symbol='EURUSD=X')
+    # Generate report for best parameter combination
+    if run_optimization:
+        best_params = results_df_sorted.iloc[0]
+        print("\nBest Parameters:")
+        print(f"Stop Loss Amount: ${best_params['stop_loss_amount']:,}")
+        print(f"Stop Loss Level: {best_params['stop_loss_level']}")
+        print(f"Step Size: {best_params['step']}")
+        print(f"Net Profit: ${best_params['net profit']:,.2f}")
     
     # Print execution time
     end_time = time.time()
     execution_time = end_time - start_time
-    print(f"Backtest execution time: {execution_time:.4f} seconds")
+    print(f"\nBacktest execution time: {execution_time:.4f} seconds")
 
 if __name__ == "__main__":
     main()
