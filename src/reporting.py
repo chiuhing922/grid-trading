@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np 
 import csv
+import time
+import os
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 import config as c
@@ -29,12 +31,16 @@ def gen_report():
     print(f"=============================== End REPORT ==========================================\n\n")
     
    # Save profit_data to CSV
-    
-    with open('d:/dev/quant/output/profit_data.csv', mode='w', newline='') as file:
+    filename = os.path.expanduser('~/dev/output/')
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    filename = f'{filename}profit_data_{timestamp}.csv'
+
+
+    with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(['DateTime', 'AccumulatedNetProfit', 'AccumulatedProfit'])
         writer.writerows(c.profit_data)
-    print("Data exported to profit_data.csv")
+    print(f"Data exported to {filename}")
     
   
     # Convert list to DataFrame

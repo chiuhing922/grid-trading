@@ -160,8 +160,6 @@ close_all_positions(data, long_stack, short_stack, current_price)
 """
 
 def record_max_drawdown():
-    #global accumulated_net_profit
-    #global max_drawdown
     if c.accumulated_net_profit<0 and c.accumulated_net_profit<c.max_drawdown:
         return c.accumulated_net_profit
     else:
@@ -207,6 +205,7 @@ def grid_trade(data, symbol, stop_loss_amount, stop_loss_level, step):
     c.win_loss_record = []
     c.record_no = 0  
     c.profit_data = []
+
     
   # Get paramenter from argument
     c.stop_loss_amount = stop_loss_amount
