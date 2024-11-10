@@ -97,42 +97,6 @@ def run_optimization(data: pd.DataFrame, trader: GridTrader) -> list:
     print("\nOptimization complete!")
     return results
 
-def run_single_backtest(data: pd.DataFrame, trader: GridTrader) -> list:
-    """Run a single backtest with parameters from config"""
-    print("\nRunning single backtest with parameters:")
-    print(f"Stop Loss Amount: ${c.single_run_params['stop_loss_amount']:,}")
-    print(f"Stop Loss Level: {c.single_run_params['stop_loss_level']}")
-    print(f"Step Size: {c.single_run_params['step']}")
-    
-    try:
-        result = trader.grid_trade(
-            data=data,
-            symbol=c.fx_symbol,
-            **c.single_run_params  # Unpack parameters from config
-        )
-        
-        # Unpack results
-        gross_profit, net_profit, max_drawdown, total_trade, stop_loss_triggered = result
-        
-        # Create results list with single dictionary
-        results = [{
-            'stop_loss_amount': c.single_run_params['stop_loss_amount'],
-            'stop_loss_level': c.single_run_params['stop_loss_level'],
-            'step': c.single_run_params['step'],
-            'gross_profit': gross_profit,
-            'net_profit': net_profit,
-            'max_drawdown': max_drawdown,
-            'total_trade': total_trade,
-            'stop_loss_triggered': stop_loss_triggered
-        }]
-        
-        print("\nBacktest completed successfully")
-        return results
-        
-    except Exception as e:
-        print(f"Error in single backtest: {e}")
-        raise
-
 def main():
     start_time = time.time()
     
@@ -143,48 +107,18 @@ def main():
             contract_size=c.contract_size
         )
         
-        # Get data source parameters
-        data_params = c.get_data_params()
-        
-        # Load data based on configured source
+        # Load data from CSV or Yahoo Finance
         try:
-            data = None
-            print(f"\nLoading data from {data_params['source_type'].value}")
-            
-            if data_params['source_type'] == c.DataSourceType.YAHOO_FINANCE:
-                data = dc.fetch_YF_data(
-                    symbol=data_params['symbol'],
-                    period=data_params.get('period', '5d'),
-                    interval=data_params.get('interval', '1m')
-                )
-            elif data_params['source_type'] == c.DataSourceType.HISTDATA:
-                # Verify required parameters exist
-                if 'file_path' not in data_params:
-                    raise ValueError("file_path is required for HistData source")
-                if 'symbol' not in data_params:
-                    raise ValueError("symbol is required for HistData source")
-                    
-                data = dc.load_histdata(
-                    file_path=data_params['file_path'],
-                    symbol=data_params['symbol']
-                )
-            else:  # CSV
-                if 'file_path' not in data_params:
-                    raise ValueError("file_path is required for CSV source")
-                data = dc.load_data_from_csv(data_params['file_path'])
-            
-            if data is not None:
-                print(f"Data loaded successfully")
-                print(f"Data shape: {data.shape}")
-                print(f"Date range: {data['Datetime'].min()} to {data['Datetime'].max()}")
-            else:
-                raise ValueError("No data loaded")
-                
+            data = dc.load_data_from_csv(c.data_params['csv_path'])
         except Exception as e:
-            print(f"Failed to load data: {e}")
-            raise
+            print(f"Failed to load CSV data: {e}")
+            print("Attempting to fetch data from Yahoo Finance...")
+            data = dc.fetch_YF_data(
+                c.fx_symbol,
+                period=c.data_params['yf_period'],
+                interval=c.data_params['yf_interval']
+            )
         
-      
         # Ensure run_mode exists in config
         if not hasattr(c, 'run_mode'):
             print("run_mode not found in config, defaulting to 'single'")
@@ -207,8 +141,7 @@ def main():
 
     except Exception as e:
         print(f"An error occurred in main: {e}")
-        import traceback
-        traceback.print_exc()
+        raise
 
 if __name__ == "__main__":
     main()

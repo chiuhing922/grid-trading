@@ -192,23 +192,17 @@ class GridTrader:
         reference_price = current_price
         next_long_price = reference_price - step
         next_short_price = reference_price + step
-
-        
         long_stack: List[float] = []
         short_stack: List[float] = []
 
         # Main trading loop
         for current_price in data['Close'].values:
-            if self.state.enable_logging:
-                print(f"next_long_price / next_short_price: {next_long_price:,.5f} / {next_short_price:.5f}")
-
             self.state.record_no += 1
             current_price = float(current_price)
             
             # Handle stop loss conditions
             if self._handle_stop_loss(data, long_stack, short_stack, current_price,
                                     next_long_price, next_short_price):
-                stop_loss_triggered +=1
                 break
 
             # Handle normal trading conditions
@@ -241,14 +235,12 @@ class GridTrader:
             current_price <= next_long_price):
             self.close_positions(data, long_stack, current_price, 
                                PositionType.LONG, ContractQuantity.ALL)
-            self.state.stop_loss_count +=1
             return self.state.accumulated_net_profit < (-1 * self.state.stop_loss_amount)
             
         elif (self.state.position <= (-1 * self.state.stop_loss_level) and 
               current_price >= next_short_price):
             self.close_positions(data, short_stack, current_price,
                                PositionType.SHORT, ContractQuantity.ALL)
-            self.state.stop_loss_count +=1
             return self.state.accumulated_net_profit < (-1 * self.state.stop_loss_amount)
             
         return False
