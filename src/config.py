@@ -31,31 +31,33 @@ trading_hours = {
 }
 
 # Volatility parameters for dynamic grid sizing
-volatility_lookback = 20        # Periods for volatility calculation  (ATR of period n)
-grid_volatility_factor = 0    # Adjust grid size based on volatility  (default = 0.5)  0 to turn off effect
+volatility_lookback = 20        # Default value, Periods for volatility calculation  (ATR of period n)
+grid_volatility_factor = 0    # Default Value, Adjust grid size based on volatility  (default = 0.5)  0 to turn off effect
 
 # Data source setting
 data_source = DataSourceType.CSV
 
 # Run mode
-run_mode = 'single'  # 'single' or 'optimization'
+run_mode =  'optimization'  # 'single' or 'optimization'
 
 # Single run parameters
 single_run_params = {
     'stop_loss_amount': 10000,  # Global stop loss amount
     'stop_loss_level': 4,       # Maximum positions in one direction
-    'step': 0.01             # Base grid step size
+    'step': 0.0005,             # Base grid step size
+    'lookback_period': 60  # Default to 1 hour
 }
 
 # Optimization parameters
 optimization_params = {
-    'stop_loss_amounts': range(1000, 11000, 1000),
-    'stop_loss_levels': range(2, 5),
-    'steps': np.arange(0.001, 0.011, 0.001),
+    'stop_loss_amounts': [5000, 10000],
+    'stop_loss_levels': [3, 4, 5],
+    'steps': np.arange(0.0150, 0.0400, 0.0010),
     # Add new parameters to optimize, not yet used in the code
-    'trailing_stop_distances': [0.0008, 0.0010, 0.0012],
-    'risk_per_trade_values': [0.005, 0.01, 0.015],
-    'volatility_factors': [0.3, 0.5, 0.7]
+    #'trailing_stop_distances': [0.0008, 0.0010, 0.0012],
+    #'risk_per_trade_values': [0.005, 0.01, 0.015],
+    'volatility_factors': [50, 100, 150, 200, 250],
+    'volatility_lookbacks': [14, 30, 60, 120, 240]  # In minutes
 }
 
 # Cost parameters

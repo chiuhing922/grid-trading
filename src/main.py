@@ -11,6 +11,7 @@ import config as c
 import data_connector as dc
 import reporting as re
 from grid_trade import GridTrader
+from grid_optimizer import run_optimized_grid_search
 
 
 def save_results(results: list, is_optimization: bool = False) -> None:
@@ -26,79 +27,48 @@ def save_results(results: list, is_optimization: bool = False) -> None:
     filename_prefix = 'optimization' if is_optimization else 'backtest'
     filename = f'{c.output_dir}/{filename_prefix}_results_{timestamp}.csv'
     
-    # Debug: Print the actual column names in the DataFrame
-    print("\nActual columns in DataFrame:", results_df.columns.tolist())
-    
     # Save results
     results_df.to_csv(filename, index=False)
     print(f"\nResults saved to {filename}")
     
-    # If optimization, display top results
-    if is_optimization:
-        try:
-            # Sort using the exact column name from the DataFrame
-            sorted_df = results_df.sort_values(by='net_profit', ascending=False)
-            print("\nTop 10 Parameter Combinations:")
-            print(sorted_df.head(50))
-        except KeyError as e:
-            print(f"\nError sorting results: Column not found. Available columns are: {results_df.columns.tolist()}")
-            # Try alternative column name if 'net_profit' is not found
-            try:
-                sorted_df = results_df.sort_values(by='net profit', ascending=False)
-                print("\nTop 10 Parameter Combinations:")
-                print(sorted_df.head(50))
-            except KeyError:
-                print("Could not sort results by either 'net_profit' or 'net profit'")
 
 def run_optimization(data: pd.DataFrame, trader: GridTrader) -> list:
-    """Run parameter optimization with ranges from config"""
-    results = []
-    
+    """Run parameter optimization with improved scalability"""
     try:
         total_combinations = (len(c.optimization_params['stop_loss_amounts']) * 
                             len(c.optimization_params['stop_loss_levels']) * 
-                            len(c.optimization_params['steps']))
+                            len(c.optimization_params['steps']) *
+                            len(c.optimization_params['volatility_factors']) *
+                            len(c.optimization_params['volatility_lookbacks']))  # Added lookbacks
     except KeyError as e:
         print(f"Error accessing optimization parameters: {e}")
         print("Please check your config.py file contains all required parameters")
         return []
 
-    current_combination = 0
+    # Define parameter grid from config
+    param_grid = {
+        'stop_loss_amount': c.optimization_params['stop_loss_amounts'],
+        'stop_loss_level': c.optimization_params['stop_loss_levels'],
+        'step': c.optimization_params['steps'],
+        'volatility_factor': c.optimization_params['volatility_factors'],
+        'volatility_lookback': c.optimization_params['volatility_lookbacks']  # Added lookbacks
+    }
+
     
-    for stop_loss_amount in c.optimization_params['stop_loss_amounts']:
-        for stop_loss_level in c.optimization_params['stop_loss_levels']:
-            for step in c.optimization_params['steps']:
-                current_combination += 1
-                print(f"\rProgress: {current_combination}/{total_combinations} "
-                      f"({(current_combination/total_combinations*100):.1f}%)", end="")
-                
-                try:
-                    result = trader.grid_trade(
-                        data=data,
-                        symbol=c.fx_symbol,
-                        stop_loss_amount=stop_loss_amount,
-                        stop_loss_level=stop_loss_level,
-                        step=step
-                    )
-                    
-                    gross_profit, net_profit, max_drawdown, total_trade, stop_loss_count = result
-                    
-                    results.append({
-                        'stop_loss_amount': stop_loss_amount,
-                        'stop_loss_level': stop_loss_level,
-                        'step': step,
-                        'gross_profit': gross_profit,
-                        'net_profit': net_profit,
-                        'max_drawdown': max_drawdown,
-                        'total_trade': total_trade,
-                        'stop_loss_count': stop_loss_count
-                    })
-                except Exception as e:
-                    print(f"\nError in optimization iteration: {e}")
-                    continue
-    
-    print("\nOptimization complete!")
-    return results
+    try:
+        # Run optimization
+        results_df = run_optimized_grid_search(data, trader, param_grid)
+        
+        # Convert results to list of dictionaries for compatibility
+        results = results_df.to_dict('records')
+        print("\nOptimization complete!")
+        return results
+        
+    except Exception as e:
+        print(f"\nError in optimization: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 def run_single_backtest(data: pd.DataFrame, trader: GridTrader) -> list:
     """Run a single backtest with parameters from config"""

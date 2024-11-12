@@ -6,7 +6,7 @@ contract_size = 100000
 fx_symbol = 'EURUSD=X'
 
 # Run mode
-run_mode = 'optimization'  # or 'single'
+run_mode = 'single'  # or 'single'
 
 # Single run parameters
 single_run_params = {

@@ -5,6 +5,7 @@ import pandas as pd
 from datetime import datetime
 import config as c
 import numpy as np
+from volatility import VolatilityManager
 
 class PositionType(Enum):
     LONG = 'long'
@@ -201,7 +202,66 @@ class GridTrader:
         self.costs = TradingCosts(spread_config=cost_params['spread_typical'])
         self.rollover = RolloverCosts(rates=cost_params['interest_rates'])
 
+        # Initialize volatility management
+        self.volatility_manager = VolatilityManager()
+        self._cached_atr: Optional[np.ndarray] = None
+        self._current_lookback: Optional[int] = None
+    def calculate_volatility(self, data: pd.DataFrame, lookback: int = None) -> float:
+        """
+        Get volatility (ATR) for current position using cached values
+        """
+        if lookback is None:
+            lookback = self.state.volatility_lookback
+            
+        if self.state.record_no < 2:
+            return 0.0
+            
+        # Check if we need to recalculate ATR series
+        if self._cached_atr is None or self._current_lookback != lookback:
+            self._cached_atr = self.volatility_manager.calculate_atr_series(data, lookback)
+            self._current_lookback = lookback
+            
+        # Return ATR for current position
+        return self._cached_atr[self.state.record_no - 1]
 
+    def calculate_dynamic_step(self, data: pd.DataFrame) -> float:
+        """
+        Calculate dynamic grid step size based on cached volatility
+        """
+        # Get base step from state
+        base_step = self.state.step
+        
+        # Get volatility from cache
+        volatility = self.calculate_volatility(data)
+        
+        if volatility == 0:
+            return base_step
+            
+        # Get current price
+        current_price = float(data['Close'].iloc[self.state.record_no-1])
+        
+        # Calculate volatility ratio (volatility as percentage of price)
+        volatility_ratio = volatility / current_price
+        
+        # Adjust step size based on volatility
+        volatility_factor = self.state.grid_volatility_factor
+        adjusted_step = base_step * (1 + volatility_ratio * volatility_factor)
+        
+        # Apply limits to prevent extreme step sizes
+        min_step = base_step * 0.5
+        max_step = base_step * 2.0
+        
+        # Round to 5 decimal places (for FX)
+        adjusted_step = round(np.clip(adjusted_step, min_step, max_step), 5)
+        
+        if self.state.enable_logging:
+            print(f"\nDynamic Grid Calculation:")
+            print(f"Base Step: {base_step:.5f}")
+            print(f"Volatility: {volatility:.5f}")
+            print(f"Volatility Ratio: {volatility_ratio:.5f}")
+            print(f"Adjusted Step: {adjusted_step:.5f}")
+            
+        return adjusted_step        
 
     def _check_position_stops(
         self,
@@ -564,95 +624,7 @@ class GridTrader:
 
         self.state.max_drawdown = self.record_max_drawdown()
         self.state.accumulated_contract += 1
-
-    def calculate_volatility(self, data: pd.DataFrame, lookback: int = None) -> float:
-        """
-        Calculate price volatility using Average True Range (ATR)
-        
-        Args:
-            data: DataFrame with OHLC data
-            lookback: Number of periods for volatility calculation
-        Returns:
-            float: Volatility measure
-        """
-        if lookback is None:
-            lookback = self.state.volatility_lookback
-            
-        if self.state.record_no < 2:
-            return 0.0
-            
-        # Get recent data
-        start_idx = max(0, self.state.record_no - lookback)
-        end_idx = self.state.record_no
-        recent_data = data.iloc[start_idx:end_idx]
-        
-        if len(recent_data) < 2:
-            return 0.0
-            
-        # Calculate True Range
-        high = recent_data['High'].values
-        low = recent_data['Low'].values
-        close = recent_data['Close'].values
-        prev_close = np.roll(close, 1)
-        
-        # Handle first value
-        prev_close[0] = close[0]
-        
-        # True Range calculations
-        tr1 = np.abs(high - low)
-        tr2 = np.abs(high - prev_close)
-        tr3 = np.abs(low - prev_close)
-        
-        # True Range is the maximum of the three measures
-        true_range = np.maximum(tr1, np.maximum(tr2, tr3))
-        
-        # Calculate ATR (Average True Range)
-        atr = np.mean(true_range)
-        
-        return atr
     
-
-    def calculate_dynamic_step(self, data: pd.DataFrame) -> float:
-        """
-        Calculate dynamic grid step size based on volatility
-        """
-        # Get base step from state
-        base_step = self.state.step
-        
-        # Calculate volatility
-        volatility = self.calculate_volatility(data)
-        
-        
-        if volatility == 0:
-            return base_step
-            
-        # Get current price
-        current_price = float(data['Close'].iloc[self.state.record_no-1])
-        
-        # Calculate volatility ratio (volatility as percentage of price)
-        volatility_ratio = volatility / current_price
-        
-        # Adjust step size based on volatility
-        # Higher volatility = larger step size
-        volatility_factor = self.state.grid_volatility_factor
-        adjusted_step = base_step * (1 + volatility_ratio * volatility_factor)
-        
-        # Apply limits to prevent extreme step sizes
-        min_step = base_step * 0.5
-        max_step = base_step * 2.0
-        
-        # Round to 5 decimal places (for FX)
-        adjusted_step = round(np.clip(adjusted_step, min_step, max_step), 5)
-        
-        if self.state.enable_logging:
-            print(f"\nDynamic Grid Calculation:")
-            print(f"Base Step: {base_step:.5f}")
-            print(f"Volatility: {volatility:.5f}")
-            print(f"Volatility Ratio: {volatility_ratio:.5f}")
-            print(f"Adjusted Step: {adjusted_step:.5f}")
-            
-        return adjusted_step
-
 
     def grid_trade(
         self,
@@ -660,13 +632,28 @@ class GridTrader:
         symbol: str,
         stop_loss_amount: float,
         stop_loss_level: int,
-        step: float
+        step: float,
+        volatility_factor: float = None,  # Add new parameter with default
+        volatility_lookback: int = None
     ) -> Tuple[float, float, float, int, int]:
         # Initialize trading state
         self.state.reset()
         self.state.stop_loss_amount = stop_loss_amount
         self.state.stop_loss_level = stop_loss_level
         self.state.step = step
+
+        # Set volatility parameters if provided
+        if volatility_factor is not None:
+            self.state.grid_volatility_factor = volatility_factor
+        if volatility_lookback is not None:
+            self.state.volatility_lookback = volatility_lookback
+
+        # Pre-calculate volatility series if using dynamic grid
+        if self.state.grid_volatility_factor > 0:
+            self._cached_atr = self.volatility_manager.calculate_atr_series(
+                data, self.state.volatility_lookback
+            )
+            self._current_lookback = self.state.volatility_lookback
 
         # Initialize trading variables
         current_price = float(data['Close'].values[0])

@@ -12,7 +12,7 @@ class DataSourceType(Enum):
 
 # Account parameters
 account_balance = 100000  # Starting balance in USD
-risk_per_trade = 0.01    # 1% risk per trade, change to big number to disable
+risk_per_trade = 0.5    # 1% risk per trade, change to big number to disable
 
 # Trading parameters
 commission_rate = 0.00002
@@ -44,7 +44,7 @@ run_mode = 'single'  # 'single' or 'optimization'
 single_run_params = {
     'stop_loss_amount': 10000,  # Global stop loss amount
     'stop_loss_level': 4,       # Maximum positions in one direction
-    'step': 0.01             # Base grid step size
+    'step': 0.0005             # Base grid step size
 }
 
 # Optimization parameters
@@ -60,8 +60,8 @@ optimization_params = {
 
 # Cost parameters
 spread_typical = {
-    'EURUSD': 0.00001  # 0.1 pip typical spread
-    #'EURUSD': 0.00000  # to disable spread
+    #'EURUSD': 0.00001  # 0.1 pip typical spread
+    'EURUSD': 0.00000  # to disable spread
 }
 
 interest_rates = {
