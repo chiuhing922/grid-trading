@@ -50,14 +50,14 @@ single_run_params = {
 
 # Optimization parameters
 optimization_params = {
-    'stop_loss_amounts': [5000, 10000],
-    'stop_loss_levels': [3, 4, 5],
-    'steps': np.arange(0.0150, 0.0400, 0.0010),
+    'stop_loss_amounts': [3000, 5000, 10000],
+    'stop_loss_levels': [2, 3, 4, 5],
+    'steps': np.arange(0.0200, 0.0400, 0.0010),
     # Add new parameters to optimize, not yet used in the code
     #'trailing_stop_distances': [0.0008, 0.0010, 0.0012],
     #'risk_per_trade_values': [0.005, 0.01, 0.015],
     'volatility_factors': [50, 100, 150, 200, 250],
-    'volatility_lookbacks': [14, 30, 60, 120, 240]  # In minutes
+    'volatility_lookbacks': [14, 30, 60, 120]  # In minutes
 }
 
 # Cost parameters
