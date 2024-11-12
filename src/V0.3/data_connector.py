@@ -128,19 +128,10 @@ class DataConnector:
             raise Exception(f"Error loading HistData file: {str(e)}")    
     def _validate_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Validate and standardize data format"""
-        if data.empty:
-            raise ValueError("Empty dataset received")
-            
         missing_cols = [col for col in self.required_columns if col not in data.columns]
         if missing_cols:
             raise ValueError(f"Missing required columns: {missing_cols}")
-            
-        # Validate numeric columns
-        numeric_cols = ['Open', 'High', 'Low', 'Close']
-        for col in numeric_cols:
-            if not pd.to_numeric(data[col], errors='coerce').notnull().all():
-                raise ValueError(f"Column {col} contains non-numeric values")
-                
+        
         if not pd.api.types.is_datetime64_any_dtype(data['Datetime']):
             data['Datetime'] = pd.to_datetime(data['Datetime'])
         

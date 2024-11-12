@@ -1,30 +1,27 @@
 # Standard library imports
 import time
-from typing import List, Dict, Dict, Any
+from typing import List, Dict, Any, Optional
 
 # Third-party imports
 import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np
 
 # Local application imports
-import config as c
 import data_connector as dc
 import reporting as re
+import config as c
 from grid_trade import GridTrader
+
 
 
 def save_results(results: list, is_optimization: bool = False) -> None:
     """Save results to CSV file"""
-    if not results:
-        print("No results to save")
-        return
-        
     results_df = pd.DataFrame(results)
     
     # Generate filename with timestamp
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     filename_prefix = 'optimization' if is_optimization else 'backtest'
-    filename = f'{c.output_dir}/{filename_prefix}_results_{timestamp}.csv'
+    filename = f'{c.output_dir}/backtest_results_{timestamp}.csv'
     
     # Debug: Print the actual column names in the DataFrame
     print("\nActual columns in DataFrame:", results_df.columns.tolist())
@@ -39,14 +36,14 @@ def save_results(results: list, is_optimization: bool = False) -> None:
             # Sort using the exact column name from the DataFrame
             sorted_df = results_df.sort_values(by='net_profit', ascending=False)
             print("\nTop 10 Parameter Combinations:")
-            print(sorted_df.head(50))
+            print(sorted_df.head(10))
         except KeyError as e:
             print(f"\nError sorting results: Column not found. Available columns are: {results_df.columns.tolist()}")
             # Try alternative column name if 'net_profit' is not found
             try:
                 sorted_df = results_df.sort_values(by='net profit', ascending=False)
                 print("\nTop 10 Parameter Combinations:")
-                print(sorted_df.head(50))
+                print(sorted_df.head(10))
             except KeyError:
                 print("Could not sort results by either 'net_profit' or 'net profit'")
 
@@ -81,7 +78,7 @@ def run_optimization(data: pd.DataFrame, trader: GridTrader) -> list:
                         step=step
                     )
                     
-                    gross_profit, net_profit, max_drawdown, total_trade, stop_loss_count = result
+                    gross_profit, net_profit, max_drawdown, total_trade, stop_loss_triggered = result
                     
                     results.append({
                         'stop_loss_amount': stop_loss_amount,
@@ -91,7 +88,7 @@ def run_optimization(data: pd.DataFrame, trader: GridTrader) -> list:
                         'net_profit': net_profit,
                         'max_drawdown': max_drawdown,
                         'total_trade': total_trade,
-                        'stop_loss_count': stop_loss_count
+                        'stop_loss_triggered': stop_loss_triggered
                     })
                 except Exception as e:
                     print(f"\nError in optimization iteration: {e}")
@@ -115,7 +112,7 @@ def run_single_backtest(data: pd.DataFrame, trader: GridTrader) -> list:
         )
         
         # Unpack results
-        gross_profit, net_profit, max_drawdown, total_trade, stop_loss_count = result
+        gross_profit, net_profit, max_drawdown, total_trade, stop_loss_triggered = result
         
         # Create results list with single dictionary
         results = [{
@@ -126,7 +123,7 @@ def run_single_backtest(data: pd.DataFrame, trader: GridTrader) -> list:
             'net_profit': net_profit,
             'max_drawdown': max_drawdown,
             'total_trade': total_trade,
-            'stop_loss_count': stop_loss_count
+            'stop_loss_triggered': stop_loss_triggered
         }]
         
         print("\nBacktest completed successfully")
@@ -136,31 +133,15 @@ def run_single_backtest(data: pd.DataFrame, trader: GridTrader) -> list:
         print(f"Error in single backtest: {e}")
         raise
 
-def plot_trading_results(df: pd.DataFrame, symbol: str) -> None:
-    """Plot trading results"""
-    
-    plt.figure(figsize=(12, 6))
-    
-    # Plot profits over time using DateTime
-    plt.plot(df['DateTime'], df['Profit'].cumsum(), label='Gross Profit')
-    plt.plot(df['DateTime'], df['NetProfit'].cumsum(), label='Net Profit')
-    
-    plt.title(f'Trading Results for {symbol}')
-    plt.xlabel('Date/Time')
-    plt.ylabel('Profit')
-    plt.legend()
-    plt.grid(True)
-    
-    # Save plot
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    plt.savefig(f'{c.output_dir}/trading_results_{timestamp}.png')
-
 def main():
     start_time = time.time()
     
     try:
         # Initialize trader
-        trader = GridTrader()
+        trader = GridTrader(
+            commission_rate=c.commission_rate,
+            contract_size=c.contract_size
+        )
         
         # Get data source parameters
         data_params = c.get_data_params()
