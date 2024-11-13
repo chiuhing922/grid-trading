@@ -35,15 +35,29 @@ def save_results(results: list, is_optimization: bool = False) -> None:
 def run_optimization(data: pd.DataFrame, trader: GridTrader) -> list:
     """Run parameter optimization with improved scalability"""
     try:
-        # Calculate total combinations from param_grid instead of optimization_params
-        total_combinations = 1
-        for values in c.param_grid.values():
-            total_combinations *= len(values)
-            
-        print(f"\nTotal parameter combinations to evaluate: {total_combinations}")
-        
-        # Run optimization using param_grid from config
-        results_df = run_optimized_grid_search(data, trader)
+        total_combinations = (len(c.optimization_params['stop_loss_amounts']) * 
+                            len(c.optimization_params['stop_loss_levels']) * 
+                            len(c.optimization_params['steps']) *
+                            len(c.optimization_params['volatility_factors']) *
+                            len(c.optimization_params['volatility_lookbacks']))  # Added lookbacks
+    except KeyError as e:
+        print(f"Error accessing optimization parameters: {e}")
+        print("Please check your config.py file contains all required parameters")
+        return []
+
+    # Define parameter grid from config
+    param_grid = {
+        'stop_loss_amount': c.optimization_params['stop_loss_amounts'],
+        'stop_loss_level': c.optimization_params['stop_loss_levels'],
+        'step': c.optimization_params['steps'],
+        'volatility_factor': c.optimization_params['volatility_factors'],
+        'volatility_lookback': c.optimization_params['volatility_lookbacks']  # Added lookbacks
+    }
+
+    
+    try:
+        # Run optimization
+        results_df = run_optimized_grid_search(data, trader, param_grid)
         
         # Convert results to list of dictionaries for compatibility
         results = results_df.to_dict('records')
@@ -61,15 +75,13 @@ def run_single_backtest(data: pd.DataFrame, trader: GridTrader) -> list:
     print("\nRunning single backtest with parameters:")
     print(f"Stop Loss Amount: ${c.single_run_params['stop_loss_amount']:,}")
     print(f"Stop Loss Level: {c.single_run_params['stop_loss_level']}")
-    print(f"Base Step Size: {c.single_run_params['step']}")
-    print(f"Volatility Factor: {c.single_run_params['volatility_factor']}")
-    print(f"Volatility Lookback: {c.single_run_params['volatility_lookback']}")
+    print(f"Step Size: {c.single_run_params['step']}")
     
     try:
         result = trader.grid_trade(
             data=data,
             symbol=c.fx_symbol,
-            **c.single_run_params
+            **c.single_run_params  # Unpack parameters from config
         )
         
         # Unpack results
@@ -80,8 +92,6 @@ def run_single_backtest(data: pd.DataFrame, trader: GridTrader) -> list:
             'stop_loss_amount': c.single_run_params['stop_loss_amount'],
             'stop_loss_level': c.single_run_params['stop_loss_level'],
             'step': c.single_run_params['step'],
-            'volatility_factor': c.single_run_params['volatility_factor'],
-            'volatility_lookback': c.single_run_params['volatility_lookback'],
             'gross_profit': gross_profit,
             'net_profit': net_profit,
             'max_drawdown': max_drawdown,
@@ -156,12 +166,6 @@ def main():
                 print(f"Data loaded successfully")
                 print(f"Data shape: {data.shape}")
                 print(f"Date range: {data['Datetime'].min()} to {data['Datetime'].max()}")
-                
-                # Add test line here 
-                #data = data.head(100)  # Test with first 100 records only
-                #print(f"Testing with reduced data shape: {data.shape}")
-
-
             else:
                 raise ValueError("No data loaded")
                 

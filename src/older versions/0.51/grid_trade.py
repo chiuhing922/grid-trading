@@ -28,11 +28,9 @@ class TradingState:
     enable_logging: bool = c.enable_logging
 
 
-    # Add or update volatility parameters
-    volatility_lookback: int = c.volatility_params['lookback']
-    grid_volatility_factor: float = c.volatility_params['base_atr_multiplier']
-    min_step: float = c.volatility_params['min_step']
-    max_step: float = c.volatility_params['max_step']
+    # Add volatility parameters
+    volatility_lookback: int = c.volatility_lookback
+    grid_volatility_factor: float = c.grid_volatility_factor
     
     # Add grid tracking
     current_grid_step: float = 0.0
@@ -192,16 +190,12 @@ class GridTrader:
             contract_size=c.contract_size,
             stop_loss_amount=0,
             stop_loss_level=0,
-            step=c.volatility_params['min_step'],
+            step=0,
             account_balance=trade_params['account_balance'],
             risk_per_trade=trade_params['risk_per_trade'],
             trailing_stop=trade_params['trailing_stop'],
             trailing_stop_distance=trade_params['trailing_stop_distance'],
-            max_position_holding_days=trade_params['max_position_holding_days'],
-            volatility_lookback=c.volatility_params['lookback'],
-            grid_volatility_factor=c.volatility_params['base_atr_multiplier'],
-            min_step=c.volatility_params['min_step'],
-            max_step=c.volatility_params['max_step']
+            max_position_holding_days=trade_params['max_position_holding_days']
         )
         
         # Initialize cost calculators with parameters from config
@@ -211,9 +205,7 @@ class GridTrader:
         # Initialize volatility management
         self.volatility_manager = VolatilityManager()
         self._cached_atr: Optional[np.ndarray] = None
-        self._current_lookback: Optional[Tuple[int, str]] = None
-        self.resample_period = c.volatility_params['resample_period']
-
+        self._current_lookback: Optional[int] = None
     def calculate_volatility(self, data: pd.DataFrame, lookback: int = None) -> float:
         """
         Get volatility (ATR) for current position using cached values
@@ -233,39 +225,43 @@ class GridTrader:
         return self._cached_atr[self.state.record_no - 1]
 
     def calculate_dynamic_step(self, data: pd.DataFrame) -> float:
-        """Calculate dynamic grid step size using resampled ATR"""
-        # Get ATR for current position
-        atr = self.calculate_volatility(data)
+        """
+        Calculate dynamic grid step size based on cached volatility
+        """
+        # Get base step from state
+        base_step = self.state.step
         
-        if atr == 0:
-            return self.state.min_step  # Use minimum step as fallback
+        # Get volatility from cache
+        volatility = self.calculate_volatility(data)
+        
+        if volatility == 0:
+            return base_step
             
         # Get current price
         current_price = float(data['Close'].iloc[self.state.record_no-1])
         
-        # Calculate ATR as percentage of price
-        atr_pct = atr / current_price
+        # Calculate volatility ratio (volatility as percentage of price)
+        volatility_ratio = volatility / current_price  # ATR in percentage of price
         
-        # Scale ATR by volatility factor
-        step_size = atr * self.state.grid_volatility_factor
+        # Adjust step size based on volatility
+        volatility_factor = self.state.grid_volatility_factor
+        adjusted_step = base_step * (1 + volatility_ratio * volatility_factor)
         
-        # Apply reasonable limits
-        adjusted_step = round(np.clip(step_size, self.state.min_step, self.state.max_step), 5)
+        # Apply limits to prevent extreme step sizes
+        min_step = base_step * 0.5
+        max_step = base_step * 2.0
         
-        # Store current grid step for reference
-        self.state.current_grid_step = adjusted_step
+        # Round to 5 decimal places (for FX)
+        adjusted_step = round(np.clip(adjusted_step, min_step, max_step), 5)
         
         if self.state.enable_logging:
-            print(f"\nDynamic Grid Step Calculation:")
-            print(f"Resampling Period: {self.resample_period}")
-            print(f"ATR: {atr:.5f}")
-            print(f"Current Price: {current_price:.5f}")
-            print(f"ATR%: {atr_pct*100:.3f}%")
-            print(f"Volatility Factor: {self.state.grid_volatility_factor}")
-            print(f"Step Size Range: {self.state.min_step:.5f} - {self.state.max_step:.5f}")
-            print(f"Final Step Size: {adjusted_step:.5f}")
+            print(f"\nDynamic Grid Calculation:")
+            print(f"Base Step: {base_step:.5f}")
+            print(f"Volatility: {volatility:.5f}")
+            print(f"Volatility Ratio: {volatility_ratio:.5f}")
+            print(f"Adjusted Step: {adjusted_step:.5f}")
             
-        return adjusted_step    
+        return adjusted_step        
 
     def _check_position_stops(
         self,
@@ -390,13 +386,6 @@ class GridTrader:
     def log_grid_prices(self, data: pd.DataFrame, current_price: float, next_long_price: float, next_short_price: float) -> None:
         """Log grid prices with timestamp"""
         if self.state.enable_logging:
-
-            # Add diagnostic prints here
-            #print(f"\nGrid Price Log Access:")
-            #print(f"Record number: {self.state.record_no}")
-            #print(f"Data length: {len(data)}")
-            #print(f"Attempting to access index: {self.state.record_no-1}")
-
             current_time = data['Datetime'].iloc[self.state.record_no-1]
             print(f"Current Price: {current_price:.5f}:  Dynamic Step Size: {self.state.current_grid_step:.5f}")
             print(f"[{current_time}] Grid Prices - Next Long: {next_long_price:.5f} / Next Short: {next_short_price:.5f}")
@@ -494,13 +483,6 @@ class GridTrader:
             # get position detail
             entry_price = position_stack.pop()
             entry_time = self.state.open_positions_time.pop(entry_price, None)
-
-            # Add diagnostic prints here
-            #print(f"\nPosition Close Access:")
-            #print(f"Record number: {self.state.record_no}")
-            #print(f"Data length: {len(data)}")
-            #print(f"Attempting to access index: {self.state.record_no-1}")
-
             exit_time = data['Datetime'].iloc[self.state.record_no-1]  # Get position exit time
 
             # Calculate base profit
@@ -574,10 +556,6 @@ class GridTrader:
             if self.state.enable_logging:
                 print(f"\nPosition Close Details:")
                 print(f"Type: {position_type.value.upper()}")
-                if position_type == PositionType.LONG:
-                    print(f"Position Number: {self.state.position+1}")
-                else:
-                    print(f"Position Number: {self.state.position+1}")        
                 print(f"Entry Price: {entry_price:.5f}")
                 print(f"Exit Price: {current_price:.5f}")
                 print(f"Dynamic Step: {dynamic_step:.5f}")
@@ -654,46 +632,31 @@ class GridTrader:
         symbol: str,
         stop_loss_amount: float,
         stop_loss_level: int,
-        step: float,               # Minimum step
-        volatility_factor: float = None,  # ATR multiplier
-        volatility_lookback: int = None,  # ATR periods
-        resample_period: str = None       # Resampling period
+        step: float,
+        volatility_factor: float = None,  # Add new parameter with default
+        volatility_lookback: int = None
     ) -> Tuple[float, float, float, int, int]:
-        
         # Initialize trading state
         self.state.reset()
         self.state.stop_loss_amount = stop_loss_amount
         self.state.stop_loss_level = stop_loss_level
-        self.state.min_step = step  # Use provided step as minimum
-        
-        # Ensure datetime is properly formatted
-        if 'Datetime' in data.columns and not pd.api.types.is_datetime64_any_dtype(data['Datetime']):
-            data['Datetime'] = pd.to_datetime(data['Datetime'])
+        self.state.step = step
 
         # Set volatility parameters if provided
         if volatility_factor is not None:
             self.state.grid_volatility_factor = volatility_factor
         if volatility_lookback is not None:
             self.state.volatility_lookback = volatility_lookback
-        if resample_period is not None:
-            self.resample_period = resample_period
 
-        # Pre-calculate ATR series
-        self._cached_atr = self.volatility_manager.calculate_atr_series(
-            data, 
-            self.state.volatility_lookback,
-            self.resample_period
-        )
-        self._current_lookback = (self.state.volatility_lookback, self.resample_period)
+        # Pre-calculate volatility series if using dynamic grid
+        if self.state.grid_volatility_factor > 0:
+            self._cached_atr = self.volatility_manager.calculate_atr_series(
+                data, self.state.volatility_lookback
+            )
+            self._current_lookback = self.state.volatility_lookback
 
         # Initialize trading variables
         current_price = float(data['Close'].values[0])
-
-        # Add diagnostic prints here
-        #print(f"\nInitial Setup:")
-        #print(f"Data shape: {data.shape}")
-        #print(f"Total records: {len(data)}")
-
         reference_price = current_price
         next_long_price = reference_price - step
         next_short_price = reference_price + step
@@ -710,13 +673,6 @@ class GridTrader:
 
         # Main trading loop
         for current_price in data['Close'].values:
-                # Add diagnostic prints here
-            #print(f"\nLoop iteration:")
-            #print(f"Record number: {self.state.record_no}")
-            #print(f"Current index: {self.state.record_no - 1}")
-            if self.state.record_no >= len(data):
-                print("WARNING: record_no exceeds data length!")
-
             self.state.record_no += 1
             current_price = float(current_price)
 
@@ -895,23 +851,16 @@ class GridTrader:
         self.state.current_grid_step = dynamic_step
 
         if self.state.position >= 0:
-
-            # Add diagnostic prints here
-            #print(f"\nLong Entry Access:")
-            #print(f"Record number: {self.state.record_no}")
-            #print(f"Data length: {len(data)}")
-            #print(f"Attempting to access index: {self.state.record_no}")
-
             # Opening new long position
             self.state.position += 1
             long_stack.append(current_price)
-            entry_time = data.iloc[self.state.record_no-1]['Datetime']
+            entry_time = data.iloc[self.state.record_no]['Datetime']
             self.state.open_positions_time[current_price] = entry_time
             
             if self.state.enable_logging:
                 print(f"\nOpening Long Position:")
                 print(f"Record No: {self.state.record_no}")
-                print(f"Position: {self.state.position}")
+                print(f"Position Count: {self.state.position}")
                 print(f"Entry Price: {current_price:.5f}")
                 print(f"Dynamic Step: {dynamic_step:.5f}")
                 print(f"Previous Grid Levels:")
@@ -963,7 +912,7 @@ class GridTrader:
             # Opening new short position
             self.state.position -= 1
             short_stack.append(current_price)
-            entry_time = data.iloc[self.state.record_no-1]['Datetime']
+            entry_time = data.iloc[self.state.record_no]['Datetime']
             self.state.open_positions_time[current_price] = entry_time
             
             if self.state.enable_logging:

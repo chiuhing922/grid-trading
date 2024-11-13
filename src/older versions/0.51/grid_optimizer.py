@@ -8,8 +8,6 @@ from tqdm import tqdm
 import numpy as np
 from dataclasses import dataclass
 from functools import partial
-import config as c
-import copy
 
 @dataclass
 class OptimizationResult:
@@ -32,17 +30,6 @@ class GridOptimizer:
         self.evaluate_func = evaluate_func
         self.n_jobs = n_jobs if n_jobs > 0 else mp.cpu_count()
         self.use_parallel = use_parallel
-        
-        # Set up multiprocessing for macOS
-        try:
-            mp.set_start_method('fork', force=True)
-        except RuntimeError:
-            # If 'fork' fails, use 'spawn' (macOS default)
-            try:
-                mp.set_start_method('spawn', force=True)
-            except RuntimeError:
-                # Method was already set, that's okay
-                pass
         
     def _evaluate_parameter_set(self, params_with_index: tuple) -> OptimizationResult:
         """Evaluate a single parameter set"""
@@ -78,28 +65,20 @@ class GridOptimizer:
         
         results = []
         
-        try:
-            if self.use_parallel and self.total_combinations > 100:
-                # Add index to parameters for progress tracking
-                indexed_params = list(enumerate(param_dicts))
-                
-                # Create process pool with maxtasksperchild to prevent memory issues
-                with mp.Pool(processes=self.n_jobs, maxtasksperchild=100) as pool:
-                    results = list(pool.imap(self._evaluate_parameter_set, indexed_params))
-            else:
-                # Sequential processing with original progress format
-                for i, params in enumerate(param_dicts):
-                    result = self._evaluate_parameter_set((i, params))
-                    if result is not None:
-                        results.append(result)
-                        
-        except Exception as e:
-            print(f"\nError during optimization: {str(e)}")
-            if results:  # Save partial results if we have any
-                print("Saving partial results...")
-            else:
-                print("No results to save")
-                
+        if self.use_parallel and self.total_combinations > 100:
+            # Add index to parameters for progress tracking
+            indexed_params = list(enumerate(param_dicts))
+            
+            # Create process pool
+            with mp.Pool(processes=self.n_jobs) as pool:
+                results = list(pool.imap(self._evaluate_parameter_set, indexed_params))
+        else:
+            # Sequential processing with original progress format
+            for i, params in enumerate(param_dicts):
+                result = self._evaluate_parameter_set((i, params))
+                if result is not None:
+                    results.append(result)
+                    
         # Remove None results from failed evaluations
         results = [r for r in results if r is not None]
         print("\nOptimization process completed!")
@@ -133,59 +112,41 @@ def evaluate_grid_trading(data: pd.DataFrame, trader, **params) -> Dict[str, flo
     Evaluate grid trading with given parameters
     Returns dict of evaluation metrics
     """
-    # Create a fresh trader instance for each evaluation
-    trader = copy.deepcopy(trader)
+    result = trader.grid_trade(
+        data=data,
+        symbol='EURUSD',
+        **params
+    )
     
-    try:
-        result = trader.grid_trade(
-            data=data.copy(),  # Use a copy of the data
-            symbol='EURUSD',
-            **params
-        )
-        
-        gross_profit, net_profit, max_drawdown, total_trade, stop_loss_count = result
-        
-        return {
-            'gross_profit': gross_profit,
-            'net_profit': net_profit,
-            'max_drawdown': max_drawdown,
-            'total_trade': total_trade,
-            'stop_loss_count': stop_loss_count,
-            'profit_drawdown_ratio': abs(net_profit / max_drawdown) if max_drawdown != 0 else float('inf')
-        }
-    except Exception as e:
-        print(f"\nError in grid trading evaluation: {str(e)}")
-        # Return a result with all zeros to indicate failure
-        return {
-            'gross_profit': 0,
-            'net_profit': 0,
-            'max_drawdown': 0,
-            'total_trade': 0,
-            'stop_loss_count': 0,
-            'profit_drawdown_ratio': 0
-        }
+    gross_profit, net_profit, max_drawdown, total_trade, stop_loss_count = result
+    
+    return {
+        'gross_profit': gross_profit,
+        'net_profit': net_profit,
+        'max_drawdown': max_drawdown,
+        'total_trade': total_trade,
+        'stop_loss_count': stop_loss_count,
+        'profit_drawdown_ratio': abs(net_profit / max_drawdown) if max_drawdown != 0 else float('inf')
+    }
 
-def run_optimized_grid_search(data: pd.DataFrame, trader) -> pd.DataFrame:
+def run_optimized_grid_search(data: pd.DataFrame, trader, param_grid: Dict[str, List[Any]]) -> pd.DataFrame:
     """
-    Run optimized grid search with parameters from config
+    Run optimized grid search with given parameters
     
     Args:
         data: Trading data
         trader: GridTrader instance
+        param_grid: Dictionary of parameters to optimize
         
     Returns:
         DataFrame with optimization results
     """
-    import config as c  # Import here to avoid circular imports
-    
     # Create evaluation function with fixed data and trader
-    eval_func = partial(evaluate_grid_trading, 
-                       data=data.copy(),  # Use a copy of the data
-                       trader=copy.deepcopy(trader))  # Use a copy of the trader
+    eval_func = partial(evaluate_grid_trading, data=data, trader=trader)
     
     # Initialize optimizer
     optimizer = GridOptimizer(
-        param_grid=c.param_grid,
+        param_grid=param_grid,
         evaluate_func=eval_func,
         n_jobs=-1,  # Use all CPU cores
         use_parallel=True
@@ -194,7 +155,7 @@ def run_optimized_grid_search(data: pd.DataFrame, trader) -> pd.DataFrame:
     # Run optimization
     results = optimizer.optimize()
     
-    # Get best results
+    # Get best results (actually running optimizer)
     best_results = optimizer.get_best_parameters(
         results,
         metric='net_profit',
