@@ -84,9 +84,11 @@ class GridOptimizer:
         print("\nOptimization process completed!")
         return results
     
+
+    # printing on screen and outputting to a file
     def get_best_parameters(self, results: List[OptimizationResult],
                           metric: str = 'net_profit',
-                          n_best: int = 100) -> pd.DataFrame:
+                          n_best: int = 1000) -> pd.DataFrame:
         """Get the best parameter combinations based on specified metric"""
         # Convert results to DataFrame
         records = []
@@ -101,7 +103,7 @@ class GridOptimizer:
         
         # Print top results in original format
         print("\nTop Parameter Combinations:")
-        print(df_sorted.head(100))
+        print(df_sorted.head(10))
         
         return df_sorted.head(n_best)
 
@@ -153,11 +155,11 @@ def run_optimized_grid_search(data: pd.DataFrame, trader, param_grid: Dict[str, 
     # Run optimization
     results = optimizer.optimize()
     
-    # Get best results
+    # Get best results (actually running optimizer)
     best_results = optimizer.get_best_parameters(
         results,
         metric='net_profit',
-        n_best=100
+        n_best=1000
     )
     
     return best_results

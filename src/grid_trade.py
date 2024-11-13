@@ -71,7 +71,7 @@ class TradingState:
     @property
     def total_costs(self) -> float:
         """Calculate total trading costs including commission, spread, and rollover"""
-        return self.total_commission + self.total_spread_cost - self.total_rollover
+        return self.total_commission + self.total_spread_cost + self.total_rollover  # rollover express in cost format, -ve means credit or offset the trade_costs
     
 
     def __post_init__(self):
@@ -176,7 +176,7 @@ class RolloverCosts:
         else:
             rollover *= (holding_days + weekend_multiplier) / holding_days
         
-        return rollover
+        return rollover   # return of rollover cost, if it's -ve then it's a credit
 
 class GridTrader:
     def __init__(self):
@@ -615,7 +615,7 @@ class GridTrader:
         self.state.total_rollover += rollover
 
         # Calculate net profit for this trade
-        trade_costs = commission + spread_cost - rollover
+        trade_costs = commission + spread_cost + rollover    # rollover is already in cost format, -ve means credit or offset the trade_costs
         net_profit = profit - trade_costs
 
         # Calculate net profit once using the property

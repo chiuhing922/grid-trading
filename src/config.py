@@ -45,19 +45,20 @@ single_run_params = {
     'stop_loss_amount': 10000,  # Global stop loss amount
     'stop_loss_level': 4,       # Maximum positions in one direction
     'step': 0.0005,             # Base grid step size
-    'lookback_period': 60  # Default to 1 hour
+    'volatility_factor': 100,
+    'volatility_lookback': 120  # In minutes
 }
 
 # Optimization parameters
 optimization_params = {
-    'stop_loss_amounts': [3000, 5000, 10000],
+    'stop_loss_amounts': [3000,6000, 10000],
     'stop_loss_levels': [2, 3, 4, 5],
-    'steps': np.arange(0.0200, 0.0400, 0.0010),
+    'steps': np.arange(0.0200, 0.0400, 0.001),
     # Add new parameters to optimize, not yet used in the code
     #'trailing_stop_distances': [0.0008, 0.0010, 0.0012],
     #'risk_per_trade_values': [0.005, 0.01, 0.015],
-    'volatility_factors': [50, 100, 150, 200, 250],
-    'volatility_lookbacks': [14, 30, 60, 120]  # In minutes
+    'volatility_factors': [75, 150, 225],
+    'volatility_lookbacks': [14, 30, 60]  # In minutes
 }
 
 # Cost parameters
