@@ -22,84 +22,99 @@ fx_symbol = 'EURUSD'
 # Per-trade risk management
 trailing_stop = False     # send to False to disable trailing stop
 trailing_stop_distance = 0.0010  # 10 pips
-max_position_holding_days = 5    # Maximum days to hold a position, default = 5, set to large number to disable
+max_position_holding_days = 5    # Maximum days to hold a position
 
 # Trading hours (24-hour format)
 trading_hours = {
-    'start': '00:00',  # Trading session start time
-    'end': '23:59'     # Trading session end time
+    'start': '00:00',
+    'end': '23:59'
 }
 
-# Volatility parameters for dynamic grid sizing
-volatility_lookback = 20        # Default value, Periods for volatility calculation  (ATR of period n)
-grid_volatility_factor = 0    # Default Value, Adjust grid size based on volatility  (default = 0.5)  0 to turn off effect
+# Default volatility parameters
+volatility_params = {
+    'resample_period': '30min',     # Default resampling period
+    'lookback': 20,                 # Default lookback periods
+    'base_atr_multiplier': 1.0,     # Default multiplier for ATR-based step size
+    'min_step': 0.02,            # Minimum step size (5 pip for FX)
+    'max_step': 0.04               # Maximum step size (100 pips for FX)
+}
 
 # Data source setting
 data_source = DataSourceType.CSV
 
 # Run mode
-run_mode =  'optimization'  # 'single' or 'optimization'
-
+run_mode = 'optimization'  # 'single' or 'optimization'
+'''
 # Single run parameters
 single_run_params = {
-    'stop_loss_amount': 10000,  # Global stop loss amount
-    'stop_loss_level': 4,       # Maximum positions in one direction
-    'step': 0.0005,             # Base grid step size
-    'volatility_factor': 100,
-    'volatility_lookback': 120  # In minutes
+    'stop_loss_amount': 10000,
+    'stop_loss_level': 4,
+    'step': volatility_params['min_step'],
+    'volatility_factor': volatility_params['base_atr_multiplier'],
+    'volatility_lookback': volatility_params['lookback'],
+    'resample_period': volatility_params['resample_period']
+}
+'''
+
+single_run_params = {
+    'stop_loss_amount': 10000,
+    'stop_loss_level': 4,
+    'step': volatility_params['min_step'],
+    'volatility_factor': volatility_params['base_atr_multiplier'],
+    'volatility_lookback': volatility_params['lookback'],
+    'resample_period': volatility_params['resample_period']
 }
 
-# Optimization parameters
+# Optimization parameter ranges
 optimization_params = {
-    'stop_loss_amounts': [3000,6000, 10000],
-    'stop_loss_levels': [2, 3, 4, 5],
-    'steps': np.arange(0.0200, 0.0400, 0.001),
-    # Add new parameters to optimize, not yet used in the code
-    #'trailing_stop_distances': [0.0008, 0.0010, 0.0012],
-    #'risk_per_trade_values': [0.005, 0.01, 0.015],
-    'volatility_factors': [75, 150, 225],
-    'volatility_lookbacks': [14, 30, 60]  # In minutes
+    'stop_loss_amounts': [3000, 5000, 10000, 20000],
+    'stop_loss_levels': range(2,10),
+    'volatility_factors': [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0],
+    'volatility_lookbacks': [5, 10, 30],
+    'resample_periods': ['15min', '30min', '1h', '4h', '1d']
+}
+
+# Parameter grid for optimization
+param_grid = {
+    'stop_loss_amount': optimization_params['stop_loss_amounts'],
+    'stop_loss_level': optimization_params['stop_loss_levels'],
+    'step': [volatility_params['min_step']],
+    'volatility_factor': optimization_params['volatility_factors'],
+    'volatility_lookback': optimization_params['volatility_lookbacks'],
+    'resample_period': optimization_params['resample_periods']
 }
 
 # Cost parameters
 spread_typical = {
     'EURUSD': 0.00001  # 0.1 pip typical spread
-    #'EURUSD': 0.00000  # to disable spread
 }
 
 interest_rates = {
-    #'USD': 0.00,  # to disable interest rate
-    #'EUR': 0.00,  # to disable interest rate
     'USD': 0.0525,  # 5.25% Fed rate
     'EUR': 0.0400,  # 4.00% ECB rate
 }
 
-# Data parameters for different sources
+# Data parameters
 data_params = {
-    # HistData configuration
     'histdata': {
         'file_path': '/Users/chris/dev/data-source/histdata/eurusd/EURUSD_2005-2015.csv',
     },
-    
-    # CSV configuration
     'csv': {
-        'file_path': '/Users/chris/dev/data-source/kaggle/eurusd_minute.csv',
+        'file_path': '/Users/chris/dev/data-source/kaggle/eurusd_minute_tiny.csv',
     },
-    
-    # Yahoo Finance configuration
     'yahoo_finance': {
         'period': '5d',
         'interval': '1m'
     }
 }
 
-# Output directory with home directory expansion
+# Output directory
 output_dir = os.path.expanduser('~/dev/output')
 
 # Logging parameters
 enable_logging = False
 
-# Get configuration functions
+# Configuration functions - MOVED BEFORE __main__
 def get_trade_params() -> Dict[str, Any]:
     """Get trading parameters"""
     return {
@@ -109,8 +124,8 @@ def get_trade_params() -> Dict[str, Any]:
         'trailing_stop_distance': trailing_stop_distance,
         'max_position_holding_days': max_position_holding_days,
         'trading_hours': trading_hours,
-        'volatility_lookback': volatility_lookback,
-        'grid_volatility_factor': grid_volatility_factor
+        'volatility_lookback': volatility_params['lookback'],
+        'grid_volatility_factor': volatility_params['base_atr_multiplier']
     }
 
 def get_cost_params() -> Dict[str, Any]:
@@ -143,21 +158,18 @@ def get_data_params() -> Dict[str, Any]:
 def verify_configuration() -> bool:
     """Verify configuration settings"""
     try:
-        # Verify output directory exists or create it
         os.makedirs(output_dir, exist_ok=True)
         
-        # Verify data parameters
         params = get_data_params()
         if not params:
             print("Error: Invalid data source configuration")
             return False
             
-        # Verify trading parameters
         if account_balance <= 0:
             print("Error: Invalid account balance")
             return False
             
-        if risk_per_trade <= 0 or risk_per_trade > 0.1:  # Max 10% risk per trade
+        if risk_per_trade <= 0 or risk_per_trade > 0.1:
             print("Error: Invalid risk per trade percentage")
             return False
             
@@ -171,7 +183,7 @@ def verify_configuration() -> bool:
         print(f"Configuration error: {e}")
         return False
 
-# Print configuration for verification
+# Main verification block
 if __name__ == "__main__":
     print("\nTrading Configuration:")
     print(f"Account Balance: ${account_balance:,}")
@@ -186,6 +198,11 @@ if __name__ == "__main__":
     print(f"Trailing Stop Distance: {trailing_stop_distance}")
     print(f"Max Position Holding Days: {max_position_holding_days}")
     
+    print("\nVolatility Parameters:")
+    print(f"Lookback: {volatility_params['lookback']}")
+    print(f"ATR Multiplier: {volatility_params['base_atr_multiplier']}")
+    print(f"Resample Period: {volatility_params['resample_period']}")
+    
     print("\nData Source Configuration:")
     print(f"Data Source: {data_source.value}")
     params = get_data_params()
@@ -194,9 +211,8 @@ if __name__ == "__main__":
     print("\nOptimization Parameters:")
     print(f"Stop Loss Amounts: {list(optimization_params['stop_loss_amounts'])}")
     print(f"Stop Loss Levels: {list(optimization_params['stop_loss_levels'])}")
-    print(f"Steps: {optimization_params['steps']}")
+    print(f"Volatility Factors: {list(optimization_params['volatility_factors'])}")
     
-    # Verify configuration
     if verify_configuration():
         print("\nConfiguration verified successfully")
     else:
